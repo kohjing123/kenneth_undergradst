@@ -1,0 +1,11 @@
+Acceptance (RankedOrder T1->T3, MeanLevel T1->T3)
+Avoidance (RankedOrder NA, MeanLevel T1->T4)
+Cartharsis (RankedOrder NA, MeanLevel T1->T3)
+Denial NA
+Distraction NA
+Problem-solving NA
+Reappraisal (RankedOrder T1->T3, MeanLevel T1->T6)
+Rumination (RankedOrder T1->T3, MeanLevel T1->T3)
+Support-Seeking (RankedOrder NA , MeanLevel T1->T2)
+Suppression (RankedOrder T1->T3, MeanLevel T1->T6)
+
