@@ -1,9 +1,3 @@
-#Do What? 
-1. Beckers d
-2. Variance of beckers d
-3. metafor rma #skip escalc cus alr doing in 1 and 2
-4. Moderator analysis w metafor here #eventually doing with both metasem and mean level change
-
 ### START OF CODE ###
 
 #Packages
@@ -380,3 +374,4 @@ print(summary_table)
 write.csv(summary_table, "meta_sensitivity_summary_reappraisal.csv", row.names=FALSE)
 
 ### END OF CODE ###
+
