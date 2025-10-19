@@ -1,6 +1,16 @@
 ### START OF CODE ###
 
+#R Version 4.51
 #Load libraries/ Install Packages
+library(metaSEM) #version 1.5.0
+library(readxl) #version 1.4.5
+library(dplyr) #version 1.1.4
+library(metafor) #version 4.8.0
+library(clubSandwich) #version 0.6.1
+
+### START OF CODE ###
+
+#Load libraries / Install Packages
 library(metaSEM)
 library(readxl)
 library(dplyr)
@@ -8,12 +18,12 @@ library(metafor)
 library(clubSandwich)
 
 #Read in your data
-df <- read_xlsx("STAnalysisNEW.xlsx", sheet = "Reappraisal", na = c("NA", "N/A", "—", "-", ".", ""))
+df <- readxl::read_xlsx("STAnalysisNEW.xlsx", sheet = "Reappraisal", na = c("NA", "N/A", "—", "-", ".", ""))
 
 #Filter out rows missing SampleSize or if missing T1T2
 df2 <- df %>%
-  filter(!is.na(SampleSize)) %>%
-  filter(rowSums(!is.na(select(., starts_with("rT")))) > 0)
+  dplyr::filter(!is.na(SampleSize)) %>%
+  dplyr::filter(rowSums(!is.na(dplyr::select(., dplyr::starts_with("rT")))) > 0)
 
 #Restrict to correlation columns for T1–T6
 cor_cols <- c("rT1T2", "rT1T3", "rT2T3")
@@ -49,7 +59,7 @@ cor_matrices <- lapply(
 n_list <- df2$SampleSize
 
 #Stage 1: pool study-specific correlation matrices into one (REM)
-re_stage1 <- tssem1(
+re_stage1 <- metaSEM::tssem1(
   cor.analysis = TRUE,
   Cov          = cor_matrices,
   n            = n_list,
@@ -59,7 +69,7 @@ re_stage1 <- tssem1(
 summary(re_stage1)
 
 #Stage 2: Hypothesised path model
-hypothesised_path_model <- lavaan2RAM(
+hypothesised_path_model <- metaSEM::lavaan2RAM(
   'T3 ~ T2
   T2 ~ T1
   T1 ~~ 1*T1',
@@ -67,7 +77,7 @@ hypothesised_path_model <- lavaan2RAM(
 )
 
 #Fit the model
-re_stage2 <- tssem2(
+re_stage2 <- metaSEM::tssem2(
   re_stage1,
   RAM = hypothesised_path_model
 )
@@ -75,7 +85,13 @@ summary(re_stage2)
 
 #Moderator Analysis using Invariance
 #Clean up Reports Invariance? column
-df2$Invariance <- ifelse(df2$`Reports Invariance?` == "YES", 1, 0)
+df2 <- df2 %>%
+  dplyr::mutate(
+    Invariance = dplyr::case_when(
+      `Reports Invariance?` == "YES" ~ 1,
+      TRUE ~ 0
+    )
+  )
 
 #Quick check
 table(df2$Invariance, useNA = "ifany")
@@ -85,7 +101,7 @@ inv <- as.matrix(df2[,"Invariance"])
 
 #Stage 1 with Invariance as moderator 
 re_stage1_inv <- tryCatch({
-  tssem1(
+  metaSEM::tssem1(
     cor.analysis = TRUE,
     Cov          = cor_matrices,
     n            = n_list,
@@ -99,10 +115,14 @@ re_stage1_inv <- tryCatch({
 
 if (!is.null(re_stage1_inv)) summary(re_stage1_inv)
 
-
 #Moderator Analysis using AchievedFullScalarInvariance 
-#Clean up  AchievedFullScalarInvariance column
-df2$Fullinv <- ifelse(df2$AchievedFullScalarInvariance == "YES", 1, 0)
+df2 <- df2 %>%
+  dplyr::mutate(
+    Fullinv = dplyr::case_when(
+      AchievedFullScalarInvariance == "YES" ~ 1,
+      TRUE ~ 0
+    )
+  )
 
 #Quick check
 table(df2$Fullinv, useNA = "ifany")
@@ -112,7 +132,7 @@ fullinv <- as.matrix(df2[, "Fullinv"])
 
 #Stage 1 with AchievedFullScalarInvariance as moderator
 re_stage1_scalar_inv <- tryCatch({
-  tssem1(
+  metaSEM::tssem1(
     cor.analysis = TRUE,
     Cov          = cor_matrices,
     n            = n_list,
@@ -126,10 +146,14 @@ re_stage1_scalar_inv <- tryCatch({
 
 if (!is.null(re_stage1_scalar_inv)) summary(re_stage1_scalar_inv)
 
-
 #Moderator Analysis with QA 
-#Clean up QA moderator
-df2$QA_mod <- ifelse(df2$Qatest %in% c("HIGH"), 1, 0)
+df2 <- df2 %>%
+  dplyr::mutate(
+    QA_mod = dplyr::case_when(
+      Qatest %in% c("HIGH") ~ 1,
+      TRUE ~ 0
+    )
+  )
 
 #Quick check
 table(df2$QA_mod, useNA = "ifany")
@@ -139,7 +163,7 @@ qa <- as.matrix(df2[, "QA_mod"])
 
 #Stage 1 with QA as moderator
 re_stage1_qa <- tryCatch({
-  tssem1(
+  metaSEM::tssem1(
     cor.analysis = TRUE,
     Cov          = cor_matrices,
     n            = n_list,
@@ -153,10 +177,14 @@ re_stage1_qa <- tryCatch({
 
 if (!is.null(re_stage1_qa)) summary(re_stage1_qa)
 
-
 #Moderator Analysis using West v East
-#Create West v East moderator
-df2$WestEast <- ifelse(df2$Region %in% c("America", "Europe", "Oceania"), 1, 0)
+df2 <- df2 %>%
+  dplyr::mutate(
+    WestEast = dplyr::case_when(
+      Region %in% c("America", "Europe", "Oceania") ~ 1,
+      TRUE ~ 0
+    )
+  )
 
 #Quick Check
 table(df2$WestEast, useNA = "ifany")
@@ -166,7 +194,7 @@ west_east <- as.matrix(df2[, "WestEast"])
 
 #Stage 1 with West v East as moderator  
 re_stage1_west_east <- tryCatch({
-  tssem1(
+  metaSEM::tssem1(
     cor.analysis = TRUE,
     Cov          = cor_matrices,
     n            = n_list,
@@ -181,30 +209,27 @@ re_stage1_west_east <- tryCatch({
 if (!is.null(re_stage1_west_east)) summary(re_stage1_west_east)
 
 #Sensitivity Analysis
-# Define the correlation columns
 cor_cols <- c("rT1T2", "rT1T3", "rT2T3")
 
-# Ensure StudyID is defined
-df2$StudyID <- paste(df2$Author, df2$`Year Collected`, sep = "_")
+#Ensure StudyID is defined
+df2 <- df2 %>%
+  dplyr::mutate(StudyID = paste(Author, `Year Collected`, sep = "_"))
 
-# Store results
+#Store results
 results_all <- list()
 
 for (cc in cor_cols) {
   df_es <- df2 %>%
-    filter(!is.na(.data[[cc]])) %>%
-    mutate(
+    dplyr::filter(!is.na(.data[[cc]])) %>%
+    dplyr::mutate(
       FisherZ = atanh(.data[[cc]]),
       VarZ = 1 / (SampleSize - 3),
       Comparison = cc
     )
   
   if (nrow(df_es) > 2) {
-    cat("\n=============================\n")
-    cat("Testing correlation:", cc, "\n")
-    
     #Multilevel model
-    res_mv <- rma.mv(
+    res_mv <- metafor::rma.mv(
       yi = FisherZ,
       V = VarZ,
       random = ~ 1 | StudyID/Comparison,
@@ -214,17 +239,17 @@ for (cc in cor_cols) {
     print(summary(res_mv))
     
     #Funnel Plot Inspection for Pub Bias Test
-    funnel(res_mv, main = "Funnel Plot (Multilevel Model)")
+    metafor::funnel(res_mv, main = "Funnel Plot (Multilevel Model)")
     
     #Cluster-robust SEs robustness check
-    cr2_res <- coef_test(res_mv, vcov = "CR2", cluster = df_es$StudyID)
+    cr2_res <- clubSandwich::coef_test(res_mv, vcov = "CR2", cluster = df_es$StudyID)
     print(cr2_res)
     
     #Manual leave-one-out robustness check
     loo_df <- do.call(rbind, lapply(unique(df_es$StudyID), function(id) {
       dat_loo <- df_es[df_es$StudyID != id, ]
       fit_loo <- try(
-        rma.mv(yi = FisherZ, V = VarZ, random = ~ 1 | StudyID/Comparison, data = dat_loo, method = "REML"),
+        metafor::rma.mv(yi = FisherZ, V = VarZ, random = ~ 1 | StudyID/Comparison, data = dat_loo, method = "REML"),
         silent = TRUE
       )
       if (!inherits(fit_loo, "try-error")) {
@@ -244,7 +269,7 @@ for (cc in cor_cols) {
   }
 }
 
-# Build summary table from all results
+#Build summary table from all results
 summary_table <- data.frame(
   Correlation = character(),
   k = numeric(),
@@ -270,8 +295,7 @@ for (cc in cor_cols) {
 }
 
 print(summary_table)
-write.csv(summary_table, "rankedorder.csv", row.names = FALSE)
 
+utils::write.csv(summary_table, "rankedorder.csv", row.names = FALSE)
 
 ### END OF CODE ###
-
