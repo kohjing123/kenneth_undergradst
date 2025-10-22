@@ -129,7 +129,7 @@ m_FullInv <- metafor::rma.mv(
 )
 base::summary(m_FullInv)
 
-#USA vs others moderator
+#West v East moderator
 m_westeast <- metafor::rma.mv(
   yi = d, 
   V = var, 
@@ -215,4 +215,5 @@ base::print(ml_summary_table)
 utils::write.csv(ml_summary_table, "meanlevelchangestrategy.csv", row.names = FALSE)
 
 ### END OF CODE ###
+
 
