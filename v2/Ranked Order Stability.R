@@ -6,7 +6,7 @@ library(metaSEM) #version 1.5.0
 library(readxl) #version 1.4.5
 library(dplyr) #version 1.1.4
 library(metafor) #version 4.8.0
-library(clubSandwich) #version 0.6.1
+library(lmerTest) #version 3.1.3
 
 ### START OF CODE ###
 
@@ -84,7 +84,7 @@ re_stage2 <- metaSEM::tssem2(
 summary(re_stage2)
 
 #Moderator Analysis using Invariance
-#Clean up Reports Invariance? column
+#Clean up column
 df2 <- df2 %>%
   dplyr::mutate(
     Invariance = dplyr::case_when(
@@ -116,6 +116,7 @@ re_stage1_inv <- tryCatch({
 if (!is.null(re_stage1_inv)) summary(re_stage1_inv)
 
 #Moderator Analysis using AchievedFullScalarInvariance 
+#Clean up column
 df2 <- df2 %>%
   dplyr::mutate(
     Fullinv = dplyr::case_when(
@@ -147,6 +148,7 @@ re_stage1_scalar_inv <- tryCatch({
 if (!is.null(re_stage1_scalar_inv)) summary(re_stage1_scalar_inv)
 
 #Moderator Analysis with QA 
+#Clean up column
 df2 <- df2 %>%
   dplyr::mutate(
     QA_mod = dplyr::case_when(
@@ -178,6 +180,7 @@ re_stage1_qa <- tryCatch({
 if (!is.null(re_stage1_qa)) summary(re_stage1_qa)
 
 #Moderator Analysis using West v East
+#Clean up column
 df2 <- df2 %>%
   dplyr::mutate(
     WestEast = dplyr::case_when(
@@ -218,6 +221,7 @@ df2 <- df2 %>%
 #Store results
 results_all <- list()
 
+#Loop
 for (cc in cor_cols) {
   df_es <- df2 %>%
     dplyr::filter(!is.na(.data[[cc]])) %>%
@@ -237,15 +241,23 @@ for (cc in cor_cols) {
       method = "REML"
     )
     print(summary(res_mv))
-    
     #Funnel Plot Inspection for Pub Bias Test
     metafor::funnel(res_mv, main = "Funnel Plot (Multilevel Model)")
-    
-    #Cluster-robust SEs robustness check
-    cr2_res <- clubSandwich::coef_test(res_mv, vcov = "CR2", cluster = df_es$StudyID)
-    print(cr2_res)
-    
-    #Manual leave-one-out robustness check
+    #Egger's Test 4 multilevel
+    df_es <- df_es %>%
+      dplyr::mutate(
+        sei = sqrt(VarZ),
+        precision = 1 / sei
+      )
+    egger_model <- try(
+      lmerTest::lmer(
+        I(FisherZ / sei) ~ 1 + precision + (1 | StudyID),
+        data = df_es
+      ),
+      silent = TRUE
+    )
+    summary(egger_model, correlation = FALSE)
+    #Leave-one-out 4 multilevel
     loo_df <- do.call(rbind, lapply(unique(df_es$StudyID), function(id) {
       dat_loo <- df_es[df_es$StudyID != id, ]
       fit_loo <- try(
@@ -259,43 +271,7 @@ for (cc in cor_cols) {
       }
     }))
     print(loo_df)
-    
-    #Save results
-    results_all[[cc]] <- list(model = res_mv, cr2 = cr2_res, loo = loo_df)
-    
-  } else {
-    cat("Not enough studies for:", cc, "\n")
-    results_all[[cc]] <- "Not enough studies"
-  }
+  } 
 }
-
-#Build summary table from all results
-summary_table <- data.frame(
-  Correlation = character(),
-  k = numeric(),
-  Estimate = numeric(),
-  SE = numeric(),
-  CI_lb = numeric(),
-  CI_ub = numeric(),
-  stringsAsFactors = FALSE
-)
-
-for (cc in cor_cols) {
-  if (!is.character(results_all[[cc]])) {
-    mod <- results_all[[cc]]$model
-    summary_table <- rbind(summary_table, data.frame(
-      Correlation = cc,
-      k = mod$k,
-      Estimate = mod$b[1],
-      SE = mod$se,
-      CI_lb = mod$ci.lb,
-      CI_ub = mod$ci.ub
-    ))
-  }
-}
-
-print(summary_table)
-
-utils::write.csv(summary_table, "rankedorder.csv", row.names = FALSE)
-
 ### END OF CODE ###
+
