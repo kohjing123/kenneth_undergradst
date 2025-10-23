@@ -5,9 +5,7 @@
 library(readxl) #version 1.4.5
 library(metafor) #version 4.8.0
 library(dplyr) #version 4.8.0
-library(tidyr) #version 1.3.1
-library(stringr) #version 1.5.1
-library(clubSandwich) #version 0.6.1
+library(lmerTest) #version 3.1.3
 
 #Load and clean data
 dat <- 
@@ -84,7 +82,7 @@ base::summary(m_lag)
 m_lag_age <- metafor::rma.mv(
   yi = d, 
   V = var, 
-  mods = ~ lag + AgeMeanT1, 
+  mods = ~ lag * AgeMeanT1, 
   random = ~ 1 | StudyID, 
   data = dat_long
 )
@@ -94,7 +92,7 @@ base::summary(m_lag_age)
 m_lag_age_sd <- metafor::rma.mv(
   yi = d, 
   V = var, 
-  mods = ~ lag + AgeMeanT1 + AgeSDT1, 
+  mods = ~ lag * AgeMeanT1 + lag * AgeSDT1, 
   random = ~ 1 | StudyID, 
   data = dat_long
 )
@@ -140,80 +138,69 @@ m_westeast <- metafor::rma.mv(
 base::summary(m_westeast)
 
 #Sensitivity analysis
-#Cluster-robust SEs
-cr2 <- function(mod) clubSandwich::coef_test(mod, vcov = clubSandwich::vcovCR(mod, cluster = dat_long$StudyID, type = "CR2"))
-base::print(cr2(m_lag))
-base::print(cr2(m_QA))
-base::print(cr2(m_Inv))
-base::print(cr2(m_FullInv))
-base::print(cr2(m_westeast))
-base::print(cr2(m_lag_age))
-base::print(cr2(m_lag_age_sd))
+#Funnel-plot
+metafor::funnel(
+  m_lag,
+  main = "Funnel Plot (Becker’s d)",
+  xlab = "Standardized Mean Change (Becker’s d)",
+  ylab = "Standard Error of Becker’s d",
+  pch = 21, bg = "skyblue", cex = 1.1
+)
 
-extract_cr2 <- function(model, model_name, coef_name = "lag") {
-  res <- base::tryCatch({
-    cr <- clubSandwich::coef_test(model, vcov = clubSandwich::vcovCR(model, cluster = dat_long$StudyID, type = "CR2"))
-    if (coef_name %in% base::rownames(cr)) {
-      base::data.frame(
-        Model = model_name,
-        Coefficient = coef_name,
-        Estimate = cr[coef_name, "beta"],
-        SE = cr[coef_name, "SE"],
-        CI_lb = cr[coef_name, "CI_L"],
-        CI_ub = cr[coef_name, "CI_U"],
-        p = cr[coef_name, "p_Satt"],
-        stringsAsFactors = FALSE
-      )
-    } else {
-      NULL
+#Egger's test
+  #Compute standard error and precision
+  dat_long <- dat_long %>%
+  mutate(
+    sei = sqrt(var),
+    precision = 1 / sei
+  )
+  #Mixed-effects Egger regression
+  egger_mixed <- lmerTest::lmer(
+  I(d / sei) ~ 1 + precision + (1 | StudyID),
+  data = dat_long)
+  #Intercept
+  summary(egger_mixed, correlation = FALSE)
+  
+#Leave-one-out
+  #Get all unique study IDs
+  study_ids <- unique(dat_long$StudyID)
+  #Create empty results table
+  loo_results <- data.frame(
+    StudyID = study_ids,
+    k = NA, est = NA, se = NA, zval = NA, pval = NA
+  )
+  #Loop through studies, drop one at a time
+  for (i in seq_along(study_ids)) {
+    dat_loo <- subset(dat_long, StudyID != study_ids[i])
+  #Try fitting the same model without that study
+  fit_loo <- try(
+      metafor::rma.mv(
+        yi = d,
+        V = var,
+        mods = ~ lag,
+        random = ~ 1 | StudyID,
+        data = dat_loo,
+        method = "REML"
+      ),
+      silent = TRUE
+    )
+   #If model runs successfully, store results
+    if (!inherits(fit_loo, "try-error")) {
+      loo_results$k[i]    <- nrow(dat_loo)
+      loo_results$est[i]  <- fit_loo$b[1, 1]
+      loo_results$se[i]   <- fit_loo$se[1]
+      loo_results$zval[i] <- fit_loo$zval[1]
+      loo_results$pval[i] <- fit_loo$pval[1]
     }
-  }, error = function(e) {
-    base::message(base::paste("Error extracting", model_name, ":", e$message))
-    NULL
-  })
-  return(res)
-}
-
-#Bootstrapping for lag
-base::set.seed(123)
-B <- 1000
-studies <- base::unique(dat_long$StudyID)
-boot_beta <- base::numeric(B)
-for (b in 1:B) {
-  s_ids <- base::sample(studies, base::length(studies), replace = TRUE)
-  dat_b <- base::do.call(base::rbind, base::lapply(s_ids, function(id) dat_long[dat_long$StudyID == id, , drop = FALSE]))
-  fit_b <- base::try(metafor::rma.mv(yi = d, V = var, mods = ~ lag, random = ~ 1 | StudyID, data = dat_b), silent = TRUE)
-  boot_beta[b] <- if (base::inherits(fit_b, "try-error")) NA_real_ else base::as.numeric(base::coef(fit_b)["lag"])
-}
-boot_beta <- boot_beta[base::is.finite(boot_beta)]
-boot_ci <- stats::quantile(boot_beta, c(.025, .5, .975), na.rm = TRUE)
-base::print(boot_ci)
-
-#Publication bias using PET-PEESE
-dat_long$sei <- base::sqrt(dat_long$var)
-#PET
-pet <- metafor::rma.mv(yi = d, V = var, mods = ~ sei, random = ~ 1 | StudyID, data = dat_long)
-base::print(clubSandwich::coef_test(pet, vcov = clubSandwich::vcovCR(pet, cluster = dat_long$StudyID, type = "CR2")))
-#If PET slope is significant (> 0), run PEESE
-peese <- metafor::rma.mv(yi = d, V = var, mods = ~ I(sei^2), random = ~ 1 | StudyID, data = dat_long)
-base::print(clubSandwich::coef_test(peese, vcov = clubSandwich::vcovCR(peese, cluster = dat_long$StudyID, type = "CR2")))
-
-#Combine all results into a summary table
-ml_summary_table <- base::do.call(base::rbind, base::list(
-  extract_cr2(m_lag, "Lag"),
-  extract_cr2(m_lag_age, "Lag + AgeMeanT1"),
-  extract_cr2(m_lag_age_sd, "Lag + AgeMeanT1 + AgeSDT1"),
-  extract_cr2(m_QA, "Lag * QA"),
-  extract_cr2(m_Inv, "Lag * Inv"),
-  extract_cr2(m_FullInv, "Lag * FullInv"),
-  extract_cr2(m_westeast, "Lag * WestEast"),
-  extract_cr2(pet, "PET (Lag ~ SE)"),
-  extract_cr2(peese, "PEESE (Lag ~ SE^2)")
-))
-
-base::print(ml_summary_table)
-utils::write.csv(ml_summary_table, "meanlevelchangestrategy.csv", row.names = FALSE)
+  }
+  #Compare to full model estimate
+  full_est <- m_lag$b[1, 1]
+  loo_results$diff <- loo_results$est - full_est
+  #Sort by largest effect change
+  loo_results_sorted <- loo_results[order(abs(loo_results$diff), decreasing = TRUE), ]
+  print(loo_results_sorted)
 
 ### END OF CODE ###
+
 
 
