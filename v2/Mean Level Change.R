@@ -5,7 +5,9 @@
 library(readxl) #version 1.4.5
 library(metafor) #version 4.8.0
 library(dplyr) #version 4.8.0
+library(tidyr) #version 1.3.1
 library(lmerTest) #version 3.1.3
+library(ggplot2) #version 3.5.2 
 
 #Load and clean data
 dat <- 
@@ -76,6 +78,37 @@ m_lag <- metafor::rma.mv(
   data = dat_long
 )
 base::summary(m_lag)
+
+##Scatterplot of d over mean age with cumulative d line graph
+#Duplicate AgeMeanT1 arrange it, and add cumulative means
+dat_long <- dat_long %>%
+  dplyr::mutate(
+    sampleMeanAge = as.numeric(stringr::str_replace_all(AgeMeanT1, "[^0-9\\.]", ""))) %>%
+  dplyr::filter(!is.na(sampleMeanAge)) %>%
+  dplyr::mutate(as.numeric(sampleMeanAge)) %>%
+  dplyr::arrange(sampleMeanAge) %>%
+  dplyr::mutate(yi_cumulative = as.numeric(cummean(d)))
+#Scatterplot
+ggplot(dat_long,
+       aes(x = sampleMeanAge) )+
+  geom_line(aes(y = yi_cumulative) # spaghetti line; line follows the values you give
+  ) +
+  geom_point(
+    aes(y = d),
+    size = 2.5 
+  ) +
+  scale_x_continuous(
+    "Sample Mean Age",
+    limits = c(0, 20),
+    breaks = seq(0, 20, 1)
+  ) +
+  scale_y_continuous(
+    "Effect size",
+    breaks = seq(0, 2, 1)
+  ) +
+  theme(
+    panel.grid.minor.x = element_blank()
+  )
 
 #Moderators
 #Control age mean 
@@ -201,6 +234,7 @@ metafor::funnel(
   print(loo_results_sorted)
 
 ### END OF CODE ###
+
 
 
 
