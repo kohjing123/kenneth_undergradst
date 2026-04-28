@@ -78,7 +78,6 @@ summary(pooled_rank)
 
 #Back-transform pooled estimate to Pearson's r
 tanh(coef(pooled_rank)[1])
-tanh(confint(pooled_rank)$fixed)
 
 ##Moderation ----
 #Mean age
