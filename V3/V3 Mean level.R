@@ -2,13 +2,13 @@
 
 #R version 4.5.1
 #Load / Install Packages
-library(readxl) #version 1.4.5
-library(metafor) #version 4.8.0
-library(dplyr) #version 4.8.0
-library(tidyr) #version 1.3.1
-library(lmerTest) #version 3.1.3
-library(ggplot2) #version 3.5.2
-library(stringr) #version 1.6.0
+library(readxl)   #version 1.4.5; Wickham & Bryan (2025)
+library(metafor)  #version 4.8.0; Viechtbauer (2010)
+library(dplyr)    #version 1.1.4; Wickham et al. (2023)
+library(tidyr)    #version 1.3.1; Wickham et al. (2024)
+library(lmerTest) #version 3.1.3; Kuznetsova et al. (2017)
+library(ggplot2)  #version 3.5.2; Wickham (2016)
+library(stringr)  #version 1.6.0; Wickham (2025)
 
 ##Becker's d and Var Calculation & Multilevel meta ----
 #Load and clean data
@@ -16,12 +16,12 @@ dat <-
   readxl::read_xlsx("STAnalysisNEW.xlsx", sheet = "Rumination") %>% 
   dplyr::mutate(
     
-    #prep nesting variables
+    #prep nesting variables by making them into factors; Konstantopoulos (2011); Viechtbauer (2010)
     `Paper ID`  = as.factor(`Paper ID`),
     `Sample ID` = as.factor(`Sample ID`),
     `Meta ID`   = as.factor(`Meta ID`),
     
-    #fix numeric columns 
+    #fix numeric columns; Wickham et al. (2023)
     dplyr::across(
       c(
         MeanT1, MeanT2, MeanT3, 
@@ -32,12 +32,12 @@ dat <-
       as.numeric
     ),
     
-    #calc beckers d
+    #calc Beckers d; Becker (1988)
     beckersdT1T2 = (MeanT2 - MeanT1) / SDT1,
     beckersdT1T3 = (MeanT3 - MeanT1) / SDT1,
     beckersdT2T3 = (MeanT3 - MeanT2) / SDT2,
     
-    #calc variance of beckers d
+    #calc variance of Beckers d; Morris & DeShon (2002)
     varbeckersdT1T2 = (2 * (1 - rT1T2) / SampleSize) + 
       (beckersdT1T2^2 / (2 * SampleSize)),
     
@@ -48,7 +48,7 @@ dat <-
       (beckersdT2T3^2 / (2 * SampleSize))
   )
 
-#Reshape data to long format and set up moderators for analysis later
+#Reshape data to long format and set up moderators for analysis later; Wickham et al. (2024); Konstantopoulos (2011); Viechtbauer (2010)
 dat_long <- dat %>%
   tidyr::pivot_longer(
     cols = dplyr::starts_with("beckersd"),
@@ -57,7 +57,7 @@ dat_long <- dat %>%
   ) %>%
   dplyr::mutate(
     
-    #Match each Becker's d to its variance
+    #Match each Becker's d to its variance; Becker (1988); Morris & DeShon (2002)
     var = dplyr::case_when(
       comparison == "beckersdT1T2" ~ varbeckersdT1T2,
       comparison == "beckersdT1T3" ~ varbeckersdT1T3,
@@ -65,36 +65,34 @@ dat_long <- dat %>%
       TRUE ~ NA_real_
     ),
     
-    #Clean comparison label and extract timepoints
+    #Clean comparison label and extract timepoints; Wickham et al. (2023)
     comp_clean = sub("^beckersd", "", comparison),
     t1 = as.numeric(sub("T([0-9])T([0-9])", "\\1", comp_clean)),
     t2 = as.numeric(sub("T([0-9])T([0-9])", "\\2", comp_clean)),
     lag = t2 - t1,
     
-    #Keep original clustering structure for multilevel models
+    #Keep original clustering structure for multilevel models; Konstantopoulos (2011); Viechtbauer (2010)
     `Paper ID`  = as.factor(`Paper ID`),
     `Sample ID` = as.factor(`Sample ID`),
     `Meta ID`   = as.factor(`Meta ID`),
     
-    #Moderators
+    #Moderators; Thompson & Higgins (2002); Viechtbauer (2010)
     QA_mod = dplyr::case_when(
-      Qatest %in% c("HIGH", "High", "high") ~ 1,
-      Qatest %in% c("LOW", "Low", "low") ~ 0,
+      Qatest %in% c("HIGH") ~ 1,
+      Qatest %in% c("LOW") ~ 0,
       TRUE ~ NA_real_
     ),
-    WestEast_mod = dplyr::case_when(
-      Region %in% c("America", "Europe", "Oceania") ~ 1,
-      Region == "Asia" ~ 0,
-      TRUE ~ NA_real_
-    ),
+    Country_mod = trimws(as.character(Country)),
+    Country_mod = dplyr::na_if(Country_mod, "NA"),
+    Country_mod = as.factor(Country_mod),
     
-    #Numeric moderators
+    #Numeric moderators; Thompson & Higgins (2002); Viechtbauer (2010)
     AgeMeanT1 = suppressWarnings(as.numeric(AgeMeanT1)),
     AgeSDT1   = suppressWarnings(as.numeric(AgeSDT1))
   ) %>%
   dplyr::filter(!is.na(d), !is.na(var))
 
-#descriptives
+#descriptives; Wickham et al. (2023)
 dat_long %>%
   dplyr::distinct(`Paper ID`, `Sample ID`, SampleSize, AgeMeanT1, AgeSDT1) %>%
   dplyr::summarise(
@@ -110,6 +108,7 @@ dat_long %>%
   )
 
 #d_year ----
+#Convert Becker's d into standardised yearly change; Becker (1988); Morris & DeShon (2002)
 dat_long <- dat_long %>%
   dplyr::mutate(
     d_year     = d / lag,
@@ -117,6 +116,7 @@ dat_long <- dat_long %>%
   )
 
 #Pooled d_year ----
+#Multilevel random-effects meta-analysis; Konstantopoulos (2011); Viechtbauer (2010)
 pooled_d_year <- metafor::rma.mv(
   yi     = d_year,
   V      = var_d_year,
@@ -127,13 +127,14 @@ pooled_d_year <- metafor::rma.mv(
 summary(pooled_d_year)
 
 ##Scatterplot of d over mean age with cumulative d line graph For now Optional ----
+#Descriptive visualisation; Wickham (2016)
 dat_long <- dat_long %>%
   dplyr::mutate(sampleMeanAge = AgeMeanT1) %>%
   dplyr::filter(!is.na(sampleMeanAge)) %>%
   dplyr::arrange(sampleMeanAge) %>%
   dplyr::mutate(yi_cumulative = as.numeric(cummean(d_year)))
 
-#Scatterplot
+#Scatterplot; Wickham (2016)
 ggplot(dat_long, aes(x = sampleMeanAge)) +
   geom_line(aes(y = yi_cumulative)) +
   geom_point(aes(y = d_year), size = 2.5) +
@@ -145,11 +146,12 @@ ggplot(dat_long, aes(x = sampleMeanAge)) +
   theme(panel.grid.minor.x = element_blank())
 
 ##Moderators ----
-#Mean Age
+#Mean Age; Thompson & Higgins (2002); Viechtbauer (2010)
 dat_long <- dat_long %>%
   dplyr::mutate(
     AgeMeanT1_c = scale(AgeMeanT1, center = TRUE, scale = FALSE)[, 1]
   )
+
 m_age <- metafor::rma.mv(
   yi     = d_year,
   V      = var_d_year,
@@ -159,9 +161,11 @@ m_age <- metafor::rma.mv(
   method = "REML"
 )
 summary(m_age)
+
+#Check multicollinearity between age variables; Thompson & Higgins (2002)
 cor(dat_long$AgeMeanT1, dat_long$AgeSDT1, use = "complete.obs") #Since cor=0.98, we will not test AgeSDT1 due to multicollinearity (unable to uniquely attribute variance to each predictor)
 
-#QA
+#QA moderator; Thompson & Higgins (2002); Viechtbauer (2010)
 m_QA <- metafor::rma.mv(
   yi     = d_year,
   V      = var_d_year,
@@ -172,19 +176,20 @@ m_QA <- metafor::rma.mv(
 )
 summary(m_QA)
 
-#Exploratories
-m_westeast <- metafor::rma.mv(
+#Exploratory country moderator; Thompson & Higgins (2002); Viechtbauer (2010)
+m_country <- metafor::rma.mv(
   yi     = d_year,
   V      = var_d_year,
-  mods   = ~ WestEast_mod,
+  mods   = ~ Country_mod,
   random = ~ 1 | `Paper ID`/`Sample ID`/`Meta ID`,
-  data   = dat_long %>% dplyr::filter(!is.na(WestEast_mod)),
+  data   = dat_long %>% dplyr::filter(!is.na(Country_mod)),
   method = "REML"
 )
-summary(m_westeast)
+
+summary(m_country)
 
 ##Sensitivity analysis / Pub Bias Tests ----
-#Egger's test
+#Egger's test for small-study effects; Egger et al. (1997); Sterne & Egger (2001); Kuznetsova et al. (2017)
 dat_long <- dat_long %>%
   dplyr::mutate(
     sei_year       = sqrt(var_d_year),
@@ -198,7 +203,7 @@ egger_mixed <- lmerTest::lmer(
 
 summary(egger_mixed, correlation = FALSE)
 
-#Leave-one-out
+#Leave-one-out sensitivity analysis; Viechtbauer & Cheung (2010)
 study_ids <- unique(dat_long$`Paper ID`)
 
 loo_results <- data.frame(
