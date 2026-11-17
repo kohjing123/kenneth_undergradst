@@ -11,7 +11,7 @@ library(tidyr)    #version 1.3.1; Wickham et al. (2024)
 ##Rank Order Stability: Breit-style correlation meta-analysis ----
 #Read data; Wickham & Bryan (2025)
 df <- readxl::read_xlsx(
-  "STAnalysis5.xlsx",
+  "STAnalysis7.xlsx",
   sheet = "Rumination",
   na = c("NA", "N/A", "—", "-", ".", "")
 )
