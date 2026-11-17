@@ -13,7 +13,7 @@ library(stringr)  #version 1.6.0; Wickham (2025)
 ##Becker's d and Var Calculation & Multilevel meta ----
 #Load and clean data
 dat <- 
-  readxl::read_xlsx("STAnalysis5.xlsx", sheet = "Rumination") %>% 
+  readxl::read_xlsx("STAnalysis7.xlsx", sheet = "Rumination") %>% 
   dplyr::mutate(
     
     #prep nesting variables by making them into factors; Konstantopoulos (2011); Viechtbauer (2010)
